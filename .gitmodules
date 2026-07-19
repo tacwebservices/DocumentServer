@@ -1,9 +1,11 @@
 [submodule "server"]
 	path = server
-	url = https://github.com/Euro-Office/server.git
+	url = https://github.com/tacwebservices/server.git
+	branch = personal-office-rebrand-docserver
 [submodule "web-apps"]
 	path = web-apps
-	url = https://github.com/Euro-Office/web-apps.git
+	url = https://github.com/tacwebservices/web-apps.git
+	branch = personal-office-rebrand-docserver
 [submodule "sdkjs"]
 	path = sdkjs
 	url = https://github.com/Euro-Office/sdkjs.git
