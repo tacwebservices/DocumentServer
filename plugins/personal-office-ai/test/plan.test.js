@@ -99,3 +99,93 @@ test("prompt lists columns with letters and the question", () => {
 	assert.match(messages[1].content, /- C: "Sales" \(number\)/);
 	assert.match(messages[1].content, /Question: show sales by branch$/);
 });
+
+// 46025 = 2026-01-03; formats are the number formats of the first data row.
+const dated = plan.describeTable({
+	name: "Sales",
+	firstRow: 1,
+	firstCol: 1,
+	values: [["Date", "Branch", "Sales"], [46025, "Lusaka", 1200], [46026, "Ndola", 800], [46054, "Kitwe", 950], [46062, "Ndola", 300]],
+	formats: ["m/d/yyyy", "General", "General"]
+});
+
+test("dates are recognised from the number format", () => {
+	assert.deepStrictEqual(dated.columns.map(c => c.type), ["date", "text", "number"]);
+	assert.strictEqual(table.columns[0].type, "text");
+	const typeFor = format => plan.describeTable({ name: "S", firstRow: 1, firstCol: 1, values: [["V"], [46025]], formats: [format] }).columns[0].type;
+	for (const format of ["dd.mm.yyyy", "mmm yyyy", "yyyy-mm-dd", "[$-409]d-mmm-yy"])
+		assert.strictEqual(typeFor(format), "date", format);
+	for (const format of ["General", "0.00", "#,##0", "h:mm", "[Red]0", '"days" 0'])
+		assert.strictEqual(typeFor(format), "number", format);
+});
+
+test("date columns are grouped by month with range formulas", () => {
+	const checked = plan.checkPlan('{"type":"summary","groupBy":"Date","value":"Sales","aggregation":"sum","chart":"line"}', dated);
+	assert.ok(checked.ok, checked.error);
+	assert.strictEqual(checked.plan.period, "month");
+	assert.deepStrictEqual(checked.plan.groups, [46023, 46054]); // 2026-01-01, 2026-02-01
+	const cells = plan.summaryCells(checked.plan, dated, 5);
+	assert.deepStrictEqual(cells[0], ["Month", "Total Sales", "Month start"]);
+	assert.deepStrictEqual(cells[1], ["=TEXT($C6,\"mmm yyyy\")",
+		"=SUMIFS('Sales'!$C$2:$C$5,'Sales'!$A$2:$A$5,\">=\"&$C6,'Sales'!$A$2:$A$5,\"<\"&EDATE($C6,1))", 46023]);
+	assert.strictEqual(checked.plan.chart, "line");
+});
+
+test("a yearly trend inside one year becomes monthly", () => {
+	const checked = plan.checkPlan('{"type":"summary","groupBy":"Date","value":"Sales","aggregation":"sum","period":"year","chart":"line"}', dated);
+	assert.strictEqual(checked.plan.period, "month");
+	assert.strictEqual(checked.plan.groups.length, 2);
+	assert.match(plan.buildMessages("q", dated)[1].content, /"Date" \(date, from 2026-01-03 to 2026-02-09\)/);
+});
+
+test("line charts need a time axis", () => {
+	const checked = plan.checkPlan('{"type":"summary","groupBy":"Branch","value":"Sales","aggregation":"sum","chart":"line"}', dated);
+	assert.strictEqual(checked.plan.chart, "bar");
+});
+
+test("visual summary keeps valid, distinct charts only", () => {
+	const reply = JSON.stringify({ charts: [
+		{ groupBy: "Date", value: "Sales", aggregation: "sum", period: "month", chart: "line", title: "Sales per month", why: "Trend" },
+		{ groupBy: "Branch", value: "Sales", aggregation: "sum", chart: "bar", title: "Sales by branch" },
+		{ groupBy: "Branch", value: "Sales", aggregation: "sum", chart: "pie", title: "Same again" },
+		{ groupBy: "Region", value: "Sales", aggregation: "sum", chart: "bar", title: "Invented column" }
+	] });
+	const checked = plan.checkVisualSummary(reply, dated);
+	assert.ok(checked.ok, checked.error);
+	assert.deepStrictEqual(checked.plan.charts.map(c => c.title), ["Sales per month", "Sales by branch"]);
+	assert.strictEqual(checked.plan.charts[0].explanation, "Trend");
+	assert.strictEqual(checked.plan.skipped.length, 1);
+});
+
+test("visual summary says so when there is nothing to chart", () => {
+	const checked = plan.checkVisualSummary('{"charts":[],"explanation":"Only names, no numbers."}', dated);
+	assert.strictEqual(checked.ok, false);
+	assert.strictEqual(checked.error, "Only names, no numbers.");
+	const words = plan.describeTable({ name: "S", firstRow: 1, firstCol: 1, values: [["Name"], ["Ann"]] });
+	assert.strictEqual(plan.canSummarize(words), false);
+	assert.strictEqual(plan.canSummarize(dated), true);
+});
+
+test("values the editor returns as text are read as numbers", () => {
+	const fromEditor = plan.describeTable({
+		name: "Sales", firstRow: 1, firstCol: 1, formats: ["m/d/yyyy", "General", "General"],
+		values: [["Date", "Branch", "Sales"], ["46025", "Lusaka", "1200"], ["46054", "Ndola", "800.5"]]
+	});
+	assert.deepStrictEqual(fromEditor.columns.map(c => c.type), ["date", "text", "number"]);
+	assert.deepStrictEqual(fromEditor.rows[1], [46054, "Ndola", 800.5]);
+	const checked = plan.checkPlan('{"type":"summary","groupBy":"Date","value":"Sales","aggregation":"sum"}', fromEditor);
+	assert.deepStrictEqual(checked.plan.groups, [46023, 46054]);
+	assert.strictEqual(plan.describeFacts({ aggregation: "sum" }, ["A", "B"], ["3", "1"]).text,
+		"Highest: A (3, 75% of the total). Lowest: B (1).");
+});
+
+test("facts come from the calculated values", () => {
+	const groupPlan = { aggregation: "sum", period: null };
+	assert.strictEqual(plan.describeFacts(groupPlan, ["Lusaka", "Ndola", "Kitwe"], [1600, 1100, 1590]).text,
+		"Highest: Lusaka (1,600, 37% of the total). Lowest: Ndola (1,100).");
+	const trend = plan.describeFacts({ aggregation: "sum", period: "month" }, ["Jan 2026", "Feb 2026", "Mar 2026"], [1000, 1100, 1452]);
+	assert.strictEqual(trend.text, "Mar 2026: 1,452, up 32% from Feb 2026. Biggest change: Mar 2026, up 32%.");
+	assert.strictEqual(trend.flag, true);
+	assert.strictEqual(plan.describeFacts({ aggregation: "average", period: null }, ["A", "B"], [2, 1]).text,
+		"Highest: A (2). Lowest: B (1).");
+});

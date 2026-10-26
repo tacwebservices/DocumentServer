@@ -2,9 +2,20 @@
  * SPDX-FileCopyrightText: 2026 Personal Office
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
+/* The editor turns off scrolling on the panel frame, so the body scrolls instead */
+html, body {
+	height: 100%;
+}
+
+html {
+	overflow: hidden;
+}
+
 body {
+	box-sizing: border-box;
 	margin: 0;
 	padding: 12px;
+	overflow-y: auto;
 	font: 12px/1.4 "Segoe UI", Arial, sans-serif;
 }
 
@@ -79,6 +90,15 @@ ul {
 	padding-left: 16px;
 	font-family: Consolas, monospace;
 	word-break: break-all;
+}
+
+ol {
+	margin: 0;
+	padding-left: 18px;
+}
+
+ol li {
+	margin-bottom: 6px;
 }
 
 .actions button {

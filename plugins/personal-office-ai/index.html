@@ -16,7 +16,10 @@
 <body>
 	<label class="defaultlable" for="question">Ask about this sheet</label>
 	<textarea id="question" class="form-control" rows="3" placeholder="For example: show sales by branch"></textarea>
-	<button id="ask" class="btn-text-default primary">Ask</button>
+	<div class="actions">
+		<button id="ask" class="btn-text-default primary">Ask</button>
+		<button id="visual" class="btn-text-default" title="Charts that tell the story of this sheet">Visual summary</button>
+	</div>
 
 	<p id="status" class="status" role="status"></p>
 
@@ -33,6 +36,10 @@
 		<div id="summary-box">
 			<span class="caption">New sheet: <span id="summary-title"></span>, <span id="summary-chart"></span></span>
 			<ul id="summary-formulas"></ul>
+		</div>
+
+		<div id="visual-box">
+			<ol id="visual-charts"></ol>
 		</div>
 
 		<div class="actions">

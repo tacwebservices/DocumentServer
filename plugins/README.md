@@ -27,6 +27,19 @@ plan against the sheet before anything changes:
 - **unsupported**: the sheet does not have the data, and nothing is inserted.
 
 Column names the sheet does not have, or sums over text columns, are rejected.
+Date columns (recognised by their number format) are grouped by month or year
+with `SUMIFS(..., ">="&start, ..., "<"&end)` formulas.
+
+### Visual summary
+
+The "Visual summary" button asks the AI for the 3 to 5 charts that best tell the
+sheet's story (trends over time, comparisons, shares). Each chart passes the
+same checks as a single summary; duplicates and charts with too many groups are
+dropped. The result is one new sheet with, per chart, a table of formulas, the
+chart, the AI's one-line reason, and a fact sentence such as
+"Mar 2026: 14,700, up 17% from Feb 2026." The facts are written by the plugin
+from the calculated values after recalculation, never by the AI; changes of 25%
+or more are flagged in red. A sheet without numbers gets no summary.
 
 ### AI server
 
