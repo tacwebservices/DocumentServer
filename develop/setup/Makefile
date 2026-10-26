@@ -88,6 +88,14 @@ sdkjs:
 	/usr/bin/documentserver-generate-allfonts.sh
 
 ## -----------------
+## PLUGINS
+## -----------------
+
+plugins:
+	sh $(EO_DEV)/plugins/build.sh $(EO_ROOT)/sdkjs-plugins
+	$(FLUSH_CACHE)
+
+## -----------------
 ## CORE BUILD
 ## -----------------
 

@@ -30,6 +30,10 @@ FROM alpine AS bundle
     # WOPI/discovery format list consumed by services.CoAuthoring.server.documentFormatsFile
     COPY document-formats/onlyoffice-docs-formats.json /build/documentserver/document-formats/onlyoffice-docs-formats.json
 
+    # --- Bundled editor plugins (Personal Office AI)
+    COPY plugins /tmp/plugins
+    RUN sh /tmp/plugins/build.sh /build/documentserver/sdkjs-plugins && rm -rf /tmp/plugins
+
     # --- Config files
     COPY build/configs/core/DoctRenderer.config /build/documentserver/server/FileConverter/bin/DoctRenderer.config
     COPY server/Metrics/config/config.js /build/documentserver/server/Metrics/config/config.js

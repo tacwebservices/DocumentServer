@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+ - SPDX-FileCopyrightText: 2026 Personal Office
+ - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Ask Personal Office</title>
+	<link rel="stylesheet" href="resources/css/style.css">
+	<script src="../v1/plugins.js"></script>
+	<script src="scripts/plan.js"></script>
+	<script src="scripts/ai-client.js"></script>
+	<script src="scripts/ask-sheet.js"></script>
+</head>
+<body>
+	<label class="defaultlable" for="question">Ask about this sheet</label>
+	<textarea id="question" class="form-control" rows="3" placeholder="For example: show sales by branch"></textarea>
+	<button id="ask" class="btn-text-default primary">Ask</button>
+
+	<p id="status" class="status" role="status"></p>
+
+	<section id="result" hidden>
+		<p id="explanation"></p>
+
+		<div id="formula-box">
+			<span class="caption">Formula</span>
+			<code id="formula"></code>
+			<label class="caption" for="cell">Put it in cell</label>
+			<input id="cell" class="form-control" type="text" size="8">
+		</div>
+
+		<div id="summary-box">
+			<span class="caption">New sheet: <span id="summary-title"></span>, <span id="summary-chart"></span></span>
+			<ul id="summary-formulas"></ul>
+		</div>
+
+		<div class="actions">
+			<button id="insert" class="btn-text-default primary">Insert</button>
+			<button id="discard" class="btn-text-default">Discard</button>
+		</div>
+	</section>
+
+	<details id="settings">
+		<summary>AI connection</summary>
+		<label class="caption" for="setting-url">Server address</label>
+		<input id="setting-url" class="form-control" type="url">
+		<label class="caption" for="setting-model">Model</label>
+		<input id="setting-model" class="form-control" type="text">
+		<label class="caption" for="setting-key">Access key (if the server needs one)</label>
+		<input id="setting-key" class="form-control" type="password">
+		<button id="save-settings" class="btn-text-default">Save</button>
+	</details>
+</body>
+</html>

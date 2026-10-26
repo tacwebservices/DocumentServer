@@ -1,0 +1,94 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Personal Office
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+body {
+	margin: 0;
+	padding: 12px;
+	font: 12px/1.4 "Segoe UI", Arial, sans-serif;
+}
+
+label, .caption {
+	display: block;
+	margin: 8px 0 4px;
+}
+
+.caption {
+	opacity: 0.75;
+}
+
+textarea, input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 4px 6px;
+	border: 1px solid;
+	border-radius: 2px;
+	font: inherit;
+	resize: vertical;
+}
+
+button {
+	margin-top: 8px;
+	padding: 4px 14px;
+	border: 1px solid;
+	border-radius: 2px;
+	font: inherit;
+	cursor: pointer;
+}
+
+button.primary {
+	border-color: #1e5eff !important;
+	background-color: #1e5eff !important;
+	color: #fff !important;
+}
+
+button:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.status {
+	min-height: 1.4em;
+	margin: 8px 0;
+}
+
+.status.error {
+	color: #d9363e;
+}
+
+.status.ok {
+	color: #16a085;
+}
+
+#result {
+	padding-top: 8px;
+	border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+code {
+	display: block;
+	padding: 6px;
+	border-radius: 2px;
+	background: rgba(128, 128, 128, 0.12);
+	font-family: Consolas, monospace;
+	word-break: break-all;
+}
+
+ul {
+	margin: 0;
+	padding-left: 16px;
+	font-family: Consolas, monospace;
+	word-break: break-all;
+}
+
+.actions button {
+	margin-right: 6px;
+}
+
+details {
+	margin-top: 16px;
+}
+
+summary {
+	cursor: pointer;
+}

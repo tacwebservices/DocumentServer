@@ -1,0 +1,19 @@
+{
+	"name": "Ask Personal Office",
+	"guid": "asc.{32B4F7E4-8E1D-4687-AE6F-6411D8BDFCA4}",
+	"version": "0.1.0",
+	"variations": [
+		{
+			"description": "Ask about your sheet in plain words. The AI picks the formula or summary, the spreadsheet does the maths.",
+			"url": "index.html",
+			"icons": ["resources/img/icon.png", "resources/img/icon@2x.png"],
+			"isViewer": false,
+			"EditorsSupport": ["cell"],
+			"isVisual": true,
+			"type": "panelRight",
+			"initDataType": "none",
+			"initData": "",
+			"buttons": []
+		}
+	]
+}
