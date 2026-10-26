@@ -31,7 +31,7 @@ Column names the sheet does not have, or sums over text columns, are rejected.
 ### AI server
 
 Any OpenAI-compatible chat endpoint works: Ollama on the laptop
-(`http://localhost:11434/v1`, the default) or llama.cpp / vLLM on an AI Box.
+(`http://localhost:11434/v1` with `qwen2.5:7b`, the default) or llama.cpp / vLLM on an AI Box.
 Change the address, model and access key under "AI connection" in the panel.
 The browser calls the server directly, so it must allow the document server's
 origin (Ollama allows `localhost` and `127.0.0.1` by default; set

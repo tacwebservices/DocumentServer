@@ -17,8 +17,13 @@
 
 	function callCommand(fn, scope) {
 		window.Asc.scope = scope || {};
-		return new Promise(function (resolve) {
-			window.Asc.plugin.callCommand(fn, false, true, resolve);
+		return new Promise(function (resolve, reject) {
+			window.Asc.plugin.callCommand(fn, false, true, function (result) {
+				if (result === undefined)
+					reject(new Error("The editor did not finish the change. Please try again."));
+				else
+					resolve(result);
+			});
 		});
 	}
 
@@ -59,10 +64,11 @@
 		var range = Api.GetActiveSheet().GetRange(Asc.scope.cell);
 		if (!range)
 			return { error: "Cell " + Asc.scope.cell + " does not exist." };
-		var previous = range.GetFormula();
+		if (range.GetFormula() !== "")
+			return { error: "Cell " + Asc.scope.cell + " is not empty. Choose an empty cell." };
 		range.SetValue(Asc.scope.formula);
 		range.Select();
-		return { previous: previous };
+		return { inserted: true };
 	}
 
 	function readCells() {
@@ -74,6 +80,7 @@
 
 	function restoreCell() {
 		Api.GetActiveSheet().GetRange(Asc.scope.cell).SetValue(Asc.scope.value);
+		return true;
 	}
 
 	function insertSummary() {
@@ -117,7 +124,7 @@
 
 		if (p.type === "formula") {
 			$("formula").textContent = p.formula;
-			$("cell").value = p.cell || current.selection || "";
+			$("cell").value = p.cell;
 		} else if (p.type === "summary") {
 			var cells = plan.summaryCells(p, current.table);
 			var list = $("summary-formulas");
@@ -154,7 +161,7 @@
 					var checked = plan.checkPlan(reply, table);
 					if (!checked.ok)
 						throw new Error(checked.error);
-					current = { plan: checked.plan, table: table, selection: sheet.selection.split(":")[0] };
+					current = { plan: checked.plan, table: table };
 					renderPlan();
 					setStatus(checked.plan.type === "unsupported" ? "" : "Check the result, then insert it.");
 				});
@@ -166,6 +173,8 @@
 	}
 
 	function insert() {
+		if ($("insert").disabled)
+			return;
 		var p = current.plan;
 		var done;
 		if (p.type === "formula") {
@@ -180,7 +189,7 @@
 				return callCommand(readCells, { cells: [cell] }).then(function (texts) {
 					if (!(/^#/).test(texts[0]))
 						return "Inserted in " + cell + ". Result: " + texts[0];
-					return callCommand(restoreCell, { cell: cell, value: res.previous }).then(function () {
+					return callCommand(restoreCell, { cell: cell, value: "" }).then(function () {
 						throw new Error("The formula gives " + texts[0] + ", so it was not inserted.");
 					});
 				});
@@ -207,11 +216,14 @@
 				});
 			});
 		}
+		$("insert").disabled = true;
 		done.then(function (message) {
 			$("result").hidden = true;
 			setStatus(message, "ok");
 		}, function (error) {
 			setStatus(error.message, "error");
+		}).then(function () {
+			$("insert").disabled = false;
 		});
 	}
 

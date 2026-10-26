@@ -59,6 +59,16 @@ test("rejects columns the sheet does not have", () => {
 	assert.match(checked.error, /no column called "Region"/);
 });
 
+test("accepts column letters, but only for real columns", () => {
+	for (const groupBy of ["B", "B: Branch", "B:Branch", "\"Branch\""]) {
+		const checked = plan.checkPlan(JSON.stringify({ type: "summary", groupBy, value: "C", aggregation: "sum" }), table);
+		assert.ok(checked.ok, groupBy + ": " + checked.error);
+		assert.strictEqual(checked.plan.groupBy.name, "Branch");
+	}
+	for (const groupBy of ["Z", "C: Branch", "B: Region"])
+		assert.strictEqual(plan.checkPlan(JSON.stringify({ type: "summary", groupBy, value: "Sales", aggregation: "sum" }), table).ok, false, groupBy);
+});
+
 test("rejects summing a text column", () => {
 	const checked = plan.checkPlan('{"type":"summary","groupBy":"Branch","value":"Date","aggregation":"sum"}', table);
 	assert.strictEqual(checked.ok, false);
@@ -69,6 +79,14 @@ test("formula answers get a leading = and a clean cell", () => {
 	assert.ok(checked.ok);
 	assert.strictEqual(checked.plan.formula, "=SUM(C2:C4)");
 	assert.strictEqual(checked.plan.cell, "E2");
+});
+
+test("formulas never land inside the table", () => {
+	for (const cell of ["C2", "A1", "B4", "", "nonsense"]) {
+		const checked = plan.checkPlan(JSON.stringify({ type: "formula", cell, formula: "=AVERAGE(C2:C4)" }), table);
+		assert.strictEqual(checked.plan.cell, "E2", cell);
+	}
+	assert.strictEqual(plan.checkPlan('{"type":"formula","cell":"H9","formula":"=1"}', table).plan.cell, "H9");
 });
 
 test("unreadable answers are reported, not guessed", () => {

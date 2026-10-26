@@ -26,6 +26,13 @@
 		return letters;
 	}
 
+	function columnIndex(letters) {
+		var index = 0;
+		for (var i = 0; i < letters.length; i++)
+			index = index * 26 + letters.charCodeAt(i) - 64;
+		return index - 1;
+	}
+
 	function quoteSheet(name) {
 		return "'" + String(name).replace(/'/g, "''") + "'";
 	}
@@ -63,6 +70,8 @@
 		var firstDataRow = sheet.firstRow + 1;
 		return {
 			sheetName: sheet.name,
+			firstRow: sheet.firstRow,
+			firstCol: sheet.firstCol,
 			columns: columns,
 			rowCount: rows.length,
 			firstDataRow: firstDataRow,
@@ -81,11 +90,11 @@
 		"You help people work with spreadsheets. You never calculate numbers yourself:",
 		"you choose formulas or a summary, and the spreadsheet does the maths.",
 		"Reply with one JSON object only, in one of these shapes:",
-		'{"type":"formula","cell":"<A1-style cell or empty>","formula":"=<spreadsheet formula>","explanation":"<one sentence>"}',
-		'{"type":"summary","groupBy":"<column name>","value":"<column name, or empty for count>","aggregation":"sum|average|count|min|max","chart":"bar|horizontalBar|pie|line|none","title":"<short title>","explanation":"<one sentence>"}',
+		'{"type":"formula","cell":"<an empty cell outside the table, or empty>","formula":"=<spreadsheet formula>","explanation":"<one sentence>"}',
+		'{"type":"summary","groupBy":"<column name in quotes from the list>","value":"<column name, or empty for count>","aggregation":"sum|average|count|min|max","chart":"bar|horizontalBar|pie|line|none","title":"<short title>","explanation":"<one sentence>"}',
 		'{"type":"unsupported","explanation":"<why the data cannot answer this>"}',
 		"Rules:",
-		"- Use column names exactly as listed. Use the listed column letters and row numbers in formulas.",
+		"- In groupBy and value, write the column name only, such as \"Branch\". In formulas, use the column letters and row numbers.",
 		"- Use \"summary\" for questions like \"sales by branch\" or \"count of orders per region\".",
 		"- Use \"formula\" for a single result, such as a total, an average or a lookup.",
 		"- Choose pie only for shares of a total, line only when the group column is ordered in time.",
@@ -114,31 +123,54 @@
 		];
 	}
 
+	// Accepts a column name, a column letter, or both ("C: Product"), as models
+	// mix them up. Anything that does not match a real column is rejected.
 	function findColumn(table, name) {
-		var wanted = String(name || "").trim().toLowerCase();
-		for (var i = 0; i < table.columns.length; i++) {
-			if (table.columns[i].name.toLowerCase() === wanted)
-				return table.columns[i];
+		var wanted = String(name || "").trim().replace(/^["']|["']$/g, "");
+		var lettered = (/^([A-Za-z]{1,3})\s*[:\-]\s*(.+)$/).exec(wanted);
+		var byName = function (n) {
+			return table.columns.filter(function (c) { return c.name.toLowerCase() === n.toLowerCase(); })[0] || null;
+		};
+		var byLetter = function (l) {
+			return table.columns.filter(function (c) { return c.letter === l.toUpperCase(); })[0] || null;
+		};
+		var column = byName(wanted);
+		if (!column && lettered) {
+			column = byLetter(lettered[1]);
+			if (column && column.name.toLowerCase() !== lettered[2].trim().replace(/^["']|["']$/g, "").toLowerCase())
+				column = null;
 		}
-		return null;
+		return column || ((/^[A-Za-z]{1,3}$/).test(wanted) ? byLetter(wanted) : null);
 	}
 
 	function fail(message) {
 		return { ok: false, error: message };
 	}
 
-	function checkFormula(plan) {
+	// The first cell right of the table, leaving one empty column.
+	function freeCell(table) {
+		return columnLetter(table.firstCol - 1 + table.columns.length + 1) + table.firstDataRow;
+	}
+
+	function insideTable(table, cell) {
+		var match = (/^([A-Z]{1,3})(\d+)$/).exec(cell);
+		var col = columnIndex(match[1]), row = parseInt(match[2], 10);
+		return row >= table.firstRow && row <= table.lastDataRow &&
+			col >= table.firstCol - 1 && col < table.firstCol - 1 + table.columns.length;
+	}
+
+	function checkFormula(plan, table) {
 		var formula = String(plan.formula || "").trim();
 		if (!formula)
 			return fail("The assistant did not return a formula.");
 		if (formula[0] !== "=")
 			formula = "=" + formula;
-		var cell = String(plan.cell || "").trim().toUpperCase();
-		if (cell && !(/^\$?[A-Z]{1,3}\$?\d{1,7}$/).test(cell))
-			cell = "";
+		var cell = String(plan.cell || "").trim().toUpperCase().replace(/\$/g, "");
+		if (!(/^[A-Z]{1,3}\d{1,7}$/).test(cell) || insideTable(table, cell))
+			cell = freeCell(table);
 		return {
 			ok: true,
-			plan: { type: "formula", formula: formula, cell: cell.replace(/\$/g, ""), explanation: plan.explanation || "" }
+			plan: { type: "formula", formula: formula, cell: cell, explanation: plan.explanation || "" }
 		};
 	}
 
@@ -227,7 +259,7 @@
 			return fail("The assistant's answer could not be read. Try asking again.");
 		switch (plan.type) {
 			case "formula":
-				return checkFormula(plan);
+				return checkFormula(plan, table);
 			case "summary":
 				return checkSummary(plan, table);
 			case "unsupported":

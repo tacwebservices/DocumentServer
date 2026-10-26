@@ -11,7 +11,7 @@
 	var STORAGE_KEY = "personal-office-ai.settings";
 	var DEFAULTS = {
 		url: "http://localhost:11434/v1",
-		model: "gpt-oss:20b",
+		model: "qwen2.5:7b",
 		apiKey: ""
 	};
 
@@ -44,13 +44,16 @@
 				model: settings.model,
 				messages: messages,
 				temperature: 0,
-				reasoning_effort: "low",
 				response_format: { type: "json_object" }
 			})
 		}).then(function (response) {
-			if (!response.ok)
-				throw new Error("The AI service answered " + response.status + " " + response.statusText);
-			return response.json();
+			return response.json().catch(function () {
+				return {};
+			}).then(function (data) {
+				if (!response.ok)
+					throw new Error("The AI service answered: " + ((data.error && data.error.message) || response.status + " " + response.statusText));
+				return data;
+			});
 		}).then(function (data) {
 			var choice = data.choices && data.choices[0];
 			if (!choice || !choice.message)
