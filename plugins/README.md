@@ -56,3 +56,13 @@ origin (Ollama allows `localhost` and `127.0.0.1` by default; set
 node --test plugins/personal-office-ai/test/plan.test.js
 docker compose exec -T eo make plugins   # copy into the running dev server
 ```
+
+### Quick image
+
+Adds the plugins to the released document server, without a full build:
+
+```sh
+docker build -t personal-office/documentserver plugins
+```
+
+Use it in MyStickCloud with `OFFICE_IMAGE=personal-office/documentserver:latest`.
