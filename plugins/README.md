@@ -14,12 +14,27 @@ plugin API code when the plugin starts.
 A panel in the spreadsheet editor (Plugins tab) where people ask about their
 sheet in plain words, such as "show sales by branch".
 
-The AI only decides what to do. It answers with a plan, and the plugin checks the
-plan against the sheet before anything changes:
+The AI only decides what to do. It answers with a plan, the plugin checks the
+plan against the sheet, then carries it out; **Remove** takes the answer out again.
 
-- **formula**: one formula, shown with its target cell. After inserting, the
-  result is read back; a formula that gives an error (`#NAME?`, `#VALUE!`, ...)
-  is removed again.
+- **calculation**: one number (total, average, count, smallest, largest,
+  median, share of the total, or which row holds the largest/smallest value),
+  with optional filters such as Branch = Lusaka. The plugin writes the formula
+  (`SUMIFS`, `COUNTIFS`, `INDEX`/`MATCH`, ...); filter values must exist in the
+  column, so a typo is reported instead of giving 0.
+- **formula**: a formula the AI writes, for what a calculation cannot express.
+  If it gives an error (`#NAME?`, `#VALUE!`, ...) it is removed and the AI gets
+  one chance to fix it.
+
+A single answer goes into the selected cell when that cell is empty and clear
+of the table; otherwise into a label/value pair of columns right of the table
+(one empty column between), each answer on the next free row. The table is the
+block under the first row with two or more filled cells, up to the first empty
+column and row, so earlier answers never become part of it.
+
+Plans that rely on a value the question never names, such as filtering on
+"Lusaka" to answer "which branch sold most", are sent back to the AI once with
+the reason. Answers to "which ..." questions are looked up by formula.
 - **summary**: a new sheet with one row per group and a `SUMIFS` / `COUNTIFS` /
   `AVERAGEIFS` / `MINIFS` / `MAXIFS` formula over the source data, an optional
   chart, and a note naming the source rows. The groups come from the data, the

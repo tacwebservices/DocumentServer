@@ -74,19 +74,115 @@ test("rejects summing a text column", () => {
 	assert.strictEqual(checked.ok, false);
 });
 
-test("formula answers get a leading = and a clean cell", () => {
-	const checked = plan.checkPlan('Here you go: {"type":"formula","cell":"$E$2","formula":"SUM(C2:C4)","explanation":"Total sales"}', table);
+test("formula answers get a leading = and a label that is not a formula", () => {
+	const checked = plan.checkPlan('Here you go: {"type":"formula","formula":"SUM(C2:C4)","label":"=Total sales"}', table);
 	assert.ok(checked.ok);
 	assert.strictEqual(checked.plan.formula, "=SUM(C2:C4)");
-	assert.strictEqual(checked.plan.cell, "E2");
+	assert.strictEqual(checked.plan.label, "Total sales");
+	assert.strictEqual(plan.checkPlan('{"type":"formula","formula":"=1"}', table).plan.label, "Answer");
 });
 
-test("formulas never land inside the table", () => {
-	for (const cell of ["C2", "A1", "B4", "", "nonsense"]) {
-		const checked = plan.checkPlan(JSON.stringify({ type: "formula", cell, formula: "=AVERAGE(C2:C4)" }), table);
-		assert.strictEqual(checked.plan.cell, "E2", cell);
-	}
-	assert.strictEqual(plan.checkPlan('{"type":"formula","cell":"H9","formula":"=1"}', table).plan.cell, "H9");
+test("calculations are built from the sheet's columns", () => {
+	const total = plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[],"label":"Total sales"}', table);
+	assert.ok(total.ok, total.error);
+	assert.strictEqual(total.plan.formula, "=SUM('Sales 2026'!$C$2:$C$4)");
+	assert.strictEqual(total.plan.built, true);
+	const count = plan.checkPlan('{"type":"calculation","aggregation":"count"}', table);
+	assert.strictEqual(count.plan.formula, "=COUNTA('Sales 2026'!$A$2:$A$4)");
+	assert.strictEqual(count.plan.label, "Count of rows");
+});
+
+test("calculation filters match real values and quote them", () => {
+	const lusaka = plan.checkPlan('{"type":"calculation","aggregation":"average","value":"Sales","filters":[{"column":"branch","operator":"=","value":"lusaka"}]}', table);
+	assert.ok(lusaka.ok, lusaka.error);
+	assert.strictEqual(lusaka.plan.formula, "=AVERAGEIFS('Sales 2026'!$C$2:$C$4,'Sales 2026'!$B$2:$B$4,\"Lusaka\")");
+	const big = plan.checkPlan('{"type":"calculation","aggregation":"count","filters":[{"column":"Sales","operator":">=","value":"500"}]}', table);
+	assert.strictEqual(big.plan.formula, "=COUNTIFS('Sales 2026'!$C$2:$C$4,\">=500\")");
+	const typo = plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[{"column":"Branch","value":"Lusak"}]}', table);
+	assert.strictEqual(typo.ok, false);
+	assert.strictEqual(typo.error, "Column \"Branch\" has no value \"Lusak\". It has: Lusaka, Ndola.");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Branch"}', table).ok, false);
+});
+
+test("shares divide the filtered total by the whole", () => {
+	const share = plan.checkPlan('{"type":"calculation","aggregation":"share","value":"Sales","filters":[{"column":"Branch","value":"Lusaka"}]}', table);
+	assert.ok(share.ok, share.error);
+	assert.strictEqual(share.plan.formula, "=SUMIFS('Sales 2026'!$C$2:$C$4,'Sales 2026'!$B$2:$B$4,\"Lusaka\")/SUM('Sales 2026'!$C$2:$C$4)");
+	assert.strictEqual(share.plan.numberFormat, "0.0%");
+	const rows = plan.checkPlan('{"type":"calculation","aggregation":"share","filters":[{"column":"Branch","value":"Ndola"}]}', table);
+	assert.strictEqual(rows.plan.formula, "=COUNTIFS('Sales 2026'!$B$2:$B$4,\"Ndola\")/COUNTA('Sales 2026'!$A$2:$A$4)");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"share","value":"Sales"}', table).ok, false);
+});
+
+test("which row has the largest value is looked up, not guessed", () => {
+	const top = plan.checkPlan('{"type":"calculation","aggregation":"which_max","value":"Sales","answerColumn":"Branch","filters":[]}', table);
+	assert.ok(top.ok, top.error);
+	assert.strictEqual(top.plan.formula, "=INDEX('Sales 2026'!$B$2:$B$4,MATCH(MAX('Sales 2026'!$C$2:$C$4),'Sales 2026'!$C$2:$C$4,0))");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"which_min","value":"Sales","answerColumn":"Town"}', table).ok, false);
+	const min = plan.checkPlan('{"type":"calculation","aggregation":"min","value":"Sales","answerColumn":"Branch"}', table);
+	assert.strictEqual(min.plan.formula, "=INDEX('Sales 2026'!$B$2:$B$4,MATCH(MIN('Sales 2026'!$C$2:$C$4),'Sales 2026'!$C$2:$C$4,0))");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"min","value":"Sales","answerColumn":""}', table).plan.formula, "=MIN('Sales 2026'!$C$2:$C$4)");
+	const asked = plan.checkPlan('{"type":"calculation","aggregation":"max","value":"Sales","filters":[]}', table, "Which branch made the biggest sale?");
+	assert.strictEqual(asked.plan.formula, "=INDEX('Sales 2026'!$B$2:$B$4,MATCH(MAX('Sales 2026'!$C$2:$C$4),'Sales 2026'!$C$2:$C$4,0))");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"max","value":"Sales"}', table, "what is the biggest sale").plan.formula, "=MAX('Sales 2026'!$C$2:$C$4)");
+	const circular = plan.checkPlan('{"type":"calculation","aggregation":"max","value":"Sales","filters":[{"column":"Branch","value":"Lusaka"}]}', table, "which branch made the biggest sale");
+	assert.strictEqual(circular.plan.formula, asked.plan.formula);
+});
+
+test("date filters use DATE, not text", () => {
+	const march = plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[{"column":"Date","operator":">=","value":"2026-02-01"}]}', dated);
+	assert.ok(march.ok, march.error);
+	assert.strictEqual(march.plan.formula, "=SUMIFS('Sales'!$C$2:$C$5,'Sales'!$A$2:$A$5,\">=\"&DATE(2026,2,1))");
+	assert.strictEqual(plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[{"column":"Date","value":"March"}]}', dated).ok, false);
+});
+
+test("answers go beside the table, or in a selected cell clear of it", () => {
+	assert.deepStrictEqual(plan.answerPlace(table, ""), { preferred: "", col: 4, startRow: 1 }); // label in E, value in F
+	for (const cell of ["B3", "A5", "D2", "C1", "A1:B2"])
+		assert.strictEqual(plan.answerPlace(table, cell).preferred, "", cell);
+	assert.strictEqual(plan.answerPlace(table, "$H$9").preferred, "H9");
+	assert.strictEqual(plan.answerPlace(table, "A7").preferred, "A7");
+});
+
+test("the table ends at an empty column or row, after any title", () => {
+	const found = plan.describeTable({
+		name: "S", firstRow: 1, firstCol: 1,
+		values: [
+			["Sales report", "", "", "", "", ""],
+			["", "", "", "", "", ""],
+			["Branch", "Sales", "", "Total sales", 2400, ""],
+			["Lusaka", 1200, "", "", "", ""],
+			["Ndola", 800, "", "", "", ""],
+			["", "", "", "", "", ""],
+			["Note", "", "", "", "", ""]
+		],
+		formatRows: [[], [], [], ["General", "0.00"]]
+	});
+	assert.deepStrictEqual(found.columns.map(c => c.letter + ":" + c.name), ["A:Branch", "B:Sales"]);
+	assert.strictEqual(found.firstRow, 3);
+	assert.strictEqual(found.firstDataRow, 4);
+	assert.strictEqual(found.lastDataRow, 5);
+	assert.deepStrictEqual(plan.answerPlace(found, "").col, 3); // D, next to the earlier answer
+});
+
+test("a formula error is sent back for one fix", () => {
+	const first = plan.buildMessages("share of Lusaka", table, "");
+	const repair = plan.buildRepairMessages(first, '{"type":"formula","formula":"=X"}', "in the sheet, =X gives #NAME?.");
+	assert.strictEqual(repair.length, 4);
+	assert.strictEqual(repair[2].role, "assistant");
+	assert.match(repair[3].content, /=X gives #NAME\?/);
+});
+
+test("plans that guess the answer are rejected", () => {
+	const question = "which branch made the biggest sale";
+	const filtered = plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[{"column":"Branch","value":"Lusaka"}]}', table, "what are the biggest sales");
+	assert.strictEqual(filtered.ok, false);
+	assert.match(filtered.error, /Branch = "Lusaka" is not in the question/);
+	const formula = plan.checkPlan('{"type":"formula","formula":"=MAXIFS(C2:C4,B2:B4,\\"Lusaka\\")"}', table, question);
+	assert.strictEqual(formula.ok, false);
+	assert.match(formula.error, /assumes Branch "Lusaka"/);
+	assert.ok(plan.checkPlan('{"type":"calculation","aggregation":"sum","value":"Sales","filters":[{"column":"Branch","value":"Lusaka"}]}', table, "total sales in lusaka").ok);
+	assert.ok(plan.checkPlan('{"type":"formula","formula":"=COUNTIFS(B2:B4,\\"Ndola\\")"}', table, "orders from Ndola?").ok);
 });
 
 test("unreadable answers are reported, not guessed", () => {

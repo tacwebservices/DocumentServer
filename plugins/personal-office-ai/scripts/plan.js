@@ -90,16 +90,54 @@
 		return dateToSerial(new Date(Date.UTC(d.getUTCFullYear(), period === "year" ? 0 : d.getUTCMonth(), 1)));
 	}
 
-	// sheet = {name, firstRow, firstCol, values, formats} where firstRow/firstCol
-	// are 1-based, values[0] is the header row and formats holds the number format
-	// of each column's first data cell.
+	function isBlank(v) {
+		return v === "" || v === null || v === undefined;
+	}
+
+	// Finds the table in the sheet's used range: the header is the first row
+	// with at least two filled cells (titles above it are skipped), the columns
+	// run until the first empty header cell, and the rows until the first empty
+	// row. Answers written beside or below the table are therefore not part of it.
+	function findTable(values) {
+		var headerIndex = 0;
+		for (var r = 0; r < values.length; r++) {
+			if (values[r].filter(function (v) { return !isBlank(v); }).length >= 2) {
+				headerIndex = r;
+				break;
+			}
+		}
+		var header = values[headerIndex] || [];
+		var start = 0;
+		while (start < header.length && isBlank(header[start]))
+			start++;
+		var end = start;
+		while (end < header.length && !isBlank(header[end]))
+			end++;
+		var rows = [];
+		for (r = headerIndex + 1; r < values.length; r++) {
+			var row = values[r].slice(start, end);
+			if (row.every(isBlank))
+				break;
+			rows.push(row);
+		}
+		return { headerIndex: headerIndex, start: start, header: header.slice(start, end), rows: rows };
+	}
+
+	// sheet = {name, firstRow, firstCol, values, formats | formatRows}: firstRow and
+	// firstCol (1-based) locate values[0][0], the corner of the used range.
+	// formatRows holds the number formats of the used range's first rows;
+	// formats (tests) gives those of the table's first data row directly.
 	function describeTable(sheet) {
-		var values = sheet.values || [];
-		var header = values[0] || [];
-		var rows = values.slice(1).filter(function (row) {
-			return row.some(function (v) { return v !== "" && v !== null && v !== undefined; });
-		});
-		var formats = sheet.formats || [];
+		var found = findTable(sheet.values || []);
+		var header = found.header;
+		var rows = found.rows;
+		var formats = sheet.formats ||
+			((sheet.formatRows || [])[found.headerIndex + 1] || []).slice(found.start, found.start + header.length);
+		sheet = {
+			name: sheet.name,
+			firstRow: sheet.firstRow + found.headerIndex,
+			firstCol: sheet.firstCol + found.start
+		};
 		var columns = header.map(function (name, i) {
 			var column = rows.map(function (row) { return row[i]; });
 			var type = valueType(column);
@@ -138,15 +176,21 @@
 
 	var SYSTEM_PROMPT = [
 		"You help people work with spreadsheets. You never calculate numbers yourself:",
-		"you choose formulas or a summary, and the spreadsheet does the maths.",
+		"you choose what to calculate, and the spreadsheet does the maths.",
 		"Reply with one JSON object only, in one of these shapes:",
-		'{"type":"formula","cell":"<an empty cell outside the table, or empty>","formula":"=<spreadsheet formula>","explanation":"<one sentence>"}',
-		'{"type":"summary","groupBy":"<column name in quotes from the list>","value":"<column name, or empty for count>","aggregation":"sum|average|count|min|max","period":"month|year|none","chart":"bar|horizontalBar|pie|line|none","title":"<short title>","explanation":"<one sentence>"}',
+		'{"type":"calculation","aggregation":"sum|average|count|min|max|median|share","answerColumn":"<only for which-questions: the column to show>","value":"<column name, or empty for count>","filters":[{"column":"<column name>","operator":"=|<>|>|>=|<|<=","value":"<text, number, or date as yyyy-mm-dd>"}],"label":"<2 to 5 words naming the result>","explanation":"<one sentence>"}',
+		'{"type":"summary","groupBy":"<column name>","value":"<column name, or empty for count>","aggregation":"sum|average|count|min|max","period":"month|year|none","chart":"bar|horizontalBar|pie|line|none","title":"<short title>","explanation":"<one sentence>"}',
+		'{"type":"formula","formula":"=<spreadsheet formula>","label":"<2 to 5 words naming the result>","explanation":"<one sentence>"}',
 		'{"type":"unsupported","explanation":"<why the data cannot answer this>"}',
 		"Rules:",
-		"- In groupBy and value, write the column name only, such as \"Branch\". In formulas, use the column letters and row numbers.",
-		"- Use \"summary\" for questions like \"sales by branch\" or \"count of orders per region\".",
-		"- Use \"formula\" for a single result, such as a total, an average or a lookup.",
+		"- Use \"calculation\" for one number: a total, average, count, smallest or largest value, with optional filters such as Branch = Lusaka. filters may be [].",
+		"- For \"which ... made the largest/smallest single sale\", use max or min with value the number column and answerColumn the column to show, such as Branch. Otherwise leave answerColumn empty.",
+		"- For \"which branch sold the most\" (totals per group), use \"summary\" for that group.",
+		"- Filters only repeat conditions the question states. Never filter on the answer you expect.",
+		"- For a percentage or share, such as \"what percent of sales is from Lusaka\", use aggregation share: the filtered rows' total (or count, without value) divided by all rows'.",
+		"- Use \"summary\" for one number per group, such as \"sales by branch\" or \"orders per month\".",
+		"- Use \"formula\" only when neither fits, such as a lookup or a ratio. Use English function names, commas between arguments, and absolute ranges over the data rows given below, such as $C$2:$C$40.",
+		"- Write column names exactly as listed, such as \"Branch\".",
 		"- To group a date column, set period to month or year; otherwise set period to none.",
 		"- Choose pie only for shares of a total, line only for a date column grouped by period.",
 		"- If the sheet does not contain the data needed, reply with \"unsupported\". Never invent data."
@@ -208,30 +252,203 @@
 		return { ok: false, error: message };
 	}
 
-	// The first cell right of the table, leaving one empty column.
-	function freeCell(table) {
-		return columnLetter(table.firstCol - 1 + table.columns.length + 1) + table.firstDataRow;
+	// Where a single answer goes: the selected cell when it is clear of the
+	// table (not in it and not touching it, so it never joins the table), else
+	// the first free row of a label/value pair of columns right of the table,
+	// leaving one empty column between. The editor checks which cells are empty.
+	function answerPlace(table, selection) {
+		var lastCol = table.firstCol - 1 + table.columns.length - 1; // 0-based
+		var place = { preferred: "", col: lastCol + 2, startRow: table.firstRow };
+		var match = (/^([A-Z]{1,3})(\d{1,7})$/).exec(String(selection || "").toUpperCase().replace(/\$/g, ""));
+		if (match) {
+			var col = columnIndex(match[1]), row = parseInt(match[2], 10);
+			var touching = row >= table.firstRow && row <= table.lastDataRow + 1 &&
+				col >= table.firstCol - 1 && col <= lastCol + 1;
+			if (!touching)
+				place.preferred = match[1] + match[2];
+		}
+		return place;
 	}
 
-	function insideTable(table, cell) {
-		var match = (/^([A-Z]{1,3})(\d+)$/).exec(cell);
-		var col = columnIndex(match[1]), row = parseInt(match[2], 10);
-		return row >= table.firstRow && row <= table.lastDataRow &&
-			col >= table.firstCol - 1 && col < table.firstCol - 1 + table.columns.length;
+	// A label is written into a cell as text, so it must not look like a formula.
+	function cleanLabel(label, fallback) {
+		var text = String(label || "").replace(/^[=+\-@\s]+/, "").trim().slice(0, 60);
+		return text || fallback;
 	}
 
-	function checkFormula(plan, table) {
+	function mentions(question, value) {
+		return question === undefined || String(question).toLowerCase().indexOf(String(value).toLowerCase()) >= 0;
+	}
+
+	// A value from the sheet that the plan relies on but the question never
+	// names is a guess at the answer, such as filtering on "Lusaka" to answer
+	// "which branch sold most".
+	function guessedValue(table, question, texts) {
+		for (var i = 0; i < table.columns.length; i++) {
+			var column = table.columns[i];
+			if (column.type !== "text")
+				continue;
+			var values = uniqueValues(table, column).map(String);
+			for (var j = 0; j < texts.length; j++) {
+				var hit = values.filter(function (v) { return v.toLowerCase() === String(texts[j]).toLowerCase(); })[0];
+				if (hit !== undefined && !mentions(question, hit))
+					return { column: column, value: hit };
+			}
+		}
+		return null;
+	}
+
+	function checkFormula(plan, table, question) {
 		var formula = String(plan.formula || "").trim();
 		if (!formula)
 			return fail("The assistant did not return a formula.");
 		if (formula[0] !== "=")
 			formula = "=" + formula;
-		var cell = String(plan.cell || "").trim().toUpperCase().replace(/\$/g, "");
-		if (!(/^[A-Z]{1,3}\d{1,7}$/).test(cell) || insideTable(table, cell))
-			cell = freeCell(table);
+		var literals = [], literal = /"((?:[^"]|"")*)"/g, m;
+		while ((m = literal.exec(formula)))
+			literals.push(m[1].replace(/""/g, "\""));
+		var guess = guessedValue(table, question, literals);
+		if (guess)
+			return fail("The formula assumes " + guess.column.name + " \"" + guess.value + "\", which the question does not mention. Let the formula find it.");
 		return {
 			ok: true,
-			plan: { type: "formula", formula: formula, cell: cell, explanation: plan.explanation || "" }
+			plan: { type: "formula", formula: formula, label: cleanLabel(plan.label, "Answer"), explanation: plan.explanation || "" }
+		};
+	}
+
+	var CALCULATIONS = {
+		sum: { label: "Total", plain: "SUM", filtered: "SUMIFS", needsValue: true },
+		average: { label: "Average", plain: "AVERAGE", filtered: "AVERAGEIFS", needsValue: true },
+		count: { label: "Count", plain: "COUNTA", filtered: "COUNTIFS", needsValue: false },
+		min: { label: "Smallest", plain: "MIN", filtered: "MINIFS", needsValue: true },
+		max: { label: "Largest", plain: "MAX", filtered: "MAXIFS", needsValue: true },
+		median: { label: "Median", plain: "MEDIAN", filtered: null, needsValue: true },
+		share: { label: "Share", needsValue: false },
+		which_max: { label: "Largest", needsValue: true, which: "MAX" },
+		which_min: { label: "Smallest", needsValue: true, which: "MIN" }
+	};
+	var OPERATORS = ["=", "<>", ">", ">=", "<", "<="];
+
+	function textLiteral(text) {
+		return "\"" + String(text).replace(/"/g, "\"\"") + "\"";
+	}
+
+	// The criteria argument of SUMIFS and friends for one filter, or an error.
+	function criteria(table, filter, question) {
+		var column = findColumn(table, filter.column);
+		if (!column)
+			return { error: "The sheet has no column called \"" + filter.column + "\"." };
+		var operator = String(filter.operator || "=").trim();
+		if (OPERATORS.indexOf(operator) < 0)
+			return { error: "Unknown comparison \"" + filter.operator + "\"." };
+		var raw = filter.value;
+		if (column.type === "date") {
+			var date = (/^(\d{4})-(\d{1,2})-(\d{1,2})$/).exec(String(raw).trim());
+			if (!date)
+				return { error: "Column \"" + column.name + "\" holds dates; \"" + raw + "\" is not a date." };
+			return { column: column, text: textLiteral(operator) + "&DATE(" + date[1] + "," + Number(date[2]) + "," + Number(date[3]) + ")" };
+		}
+		if (column.type === "number") {
+			var number = toNumber(raw);
+			if (number === null)
+				return { error: "Column \"" + column.name + "\" holds numbers; \"" + raw + "\" is not a number." };
+			return { column: column, text: textLiteral(operator + number) };
+		}
+		var wanted = String(raw === null || raw === undefined ? "" : raw).trim();
+		if (operator === "=" || operator === "<>") {
+			// Match a real value, ignoring case, so a typo is reported instead of counting nothing.
+			var values = uniqueValues(table, column).map(String);
+			var match = values.filter(function (v) { return v.toLowerCase() === wanted.toLowerCase(); })[0];
+			if (match === undefined)
+				return { error: "Column \"" + column.name + "\" has no value \"" + wanted + "\". It has: " +
+					values.slice(0, 8).join(", ") + (values.length > 8 ? ", …" : "") + "." };
+			wanted = match;
+			if (!mentions(question, wanted))
+				return { error: "The filter " + column.name + " = \"" + wanted + "\" is not in the question. Use only conditions the question states." };
+		}
+		return { column: column, text: textLiteral((operator === "=" ? "" : operator) + wanted) };
+	}
+
+	// The text column a "which/what/who <column> ..." question asks for, or "".
+	function askedColumn(table, question) {
+		var asked = (/\b(?:which|what|who)\s+([a-z][\w ]*)/i).exec(String(question || ""));
+		if (!asked)
+			return "";
+		var words = asked[1].toLowerCase();
+		var column = table.columns.filter(function (c) {
+			var name = c.name.toLowerCase();
+			return c.type === "text" && (words.indexOf(name) === 0 || words.indexOf(name.replace(/s$/, "")) === 0);
+		})[0];
+		return column ? column.name : "";
+	}
+
+	function checkCalculation(plan, table, question) {
+		var calc = CALCULATIONS[String(plan.aggregation || "").toLowerCase()];
+		if (!calc)
+			return fail("Unknown calculation \"" + plan.aggregation + "\".");
+		// max or min with a column to show asks which row holds that value; a
+		// question such as "which branch ..." names that column itself.
+		if (calc === CALCULATIONS.max || calc === CALCULATIONS.min) {
+			if (!String(plan.answerColumn || "").trim())
+				plan.answerColumn = askedColumn(table, question);
+			if (plan.answerColumn)
+				calc = calc === CALCULATIONS.max ? CALCULATIONS.which_max : CALCULATIONS.which_min;
+		}
+		var value = null;
+		if (calc.needsValue || (calc === CALCULATIONS.share && String(plan.value || "").trim())) {
+			value = findColumn(table, plan.value);
+			if (!value)
+				return fail("The sheet has no column called \"" + plan.value + "\".");
+			if (value.type !== "number")
+				return fail("Column \"" + value.name + "\" does not contain numbers.");
+		}
+		var filters = Array.isArray(plan.filters) ? plan.filters.filter(Boolean) : [];
+		var answer = calc.which ? findColumn(table, plan.answerColumn) : null;
+		if (calc.which && !answer)
+			return fail("The sheet has no column called \"" + plan.answerColumn + "\".");
+		if (answer) {
+			// "Which branch ..." filtered on Branch can only be a guess at the answer.
+			filters = filters.filter(function (f) {
+				return findColumn(table, f.column) !== answer;
+			});
+		}
+		var parts = [];
+		for (var i = 0; i < filters.length; i++) {
+			var c = criteria(table, filters[i], question);
+			if (c.error)
+				return fail(c.error);
+			parts.push(columnRange(table, c.column) + "," + c.text);
+		}
+		var formula, numberFormat = "";
+		if (calc.which) {
+			if (parts.length)
+				return fail("Finding the row with the " + (calc.which === "MAX" ? "largest" : "smallest") + " value does not support filters yet.");
+			// The row holding the largest (smallest) value; the first one on a tie.
+			formula = "=INDEX(" + columnRange(table, answer) + ",MATCH(" + calc.which + "(" + columnRange(table, value) + ")," +
+				columnRange(table, value) + ",0))";
+		} else if (calc === CALCULATIONS.share) {
+			if (!parts.length)
+				return fail("A share needs a filter, such as Branch = Lusaka.");
+			formula = value ?
+				"=SUMIFS(" + columnRange(table, value) + "," + parts.join(",") + ")/SUM(" + columnRange(table, value) + ")" :
+				"=COUNTIFS(" + parts.join(",") + ")/COUNTA(" + columnRange(table, table.columns[0]) + ")";
+			numberFormat = "0.0%";
+		} else if (!parts.length)
+			formula = "=" + calc.plain + "(" + columnRange(table, value || table.columns[0]) + ")";
+		else if (calc.filtered)
+			formula = "=" + calc.filtered + "(" + (value ? columnRange(table, value) + "," : "") + parts.join(",") + ")";
+		else
+			return fail("A median with filters is not supported yet. Try an average instead.");
+		return {
+			ok: true,
+			plan: {
+				type: "formula",
+				formula: formula,
+				numberFormat: numberFormat,
+				label: cleanLabel(plan.label, calc.label + (value ? " " + value.name : " of rows")),
+				explanation: plan.explanation || "",
+				built: true
+			}
 		};
 	}
 
@@ -435,6 +652,16 @@
 		return { text: text, flag: false };
 	}
 
+	// Asks the model once more after its answer failed a check or its formula
+	// gave an error in the sheet.
+	function buildRepairMessages(messages, reply, problem) {
+		return messages.concat([
+			{ role: "assistant", content: String(reply) },
+			{ role: "user", content: "That answer could not be used: " + problem +
+				" Reply with a corrected JSON object. Prefer \"calculation\" if it can answer the question." }
+		]);
+	}
+
 	function parseReply(text) {
 		var body = String(text || "").trim();
 		var start = body.indexOf("{"), end = body.lastIndexOf("}");
@@ -447,13 +674,16 @@
 		}
 	}
 
-	function checkPlan(reply, table) {
+	// question, when given, is used to catch plans that guess the answer.
+	function checkPlan(reply, table, question) {
 		var plan = parseReply(reply);
 		if (!plan || typeof plan !== "object")
 			return fail("The assistant's answer could not be read. Try asking again.");
 		switch (plan.type) {
+			case "calculation":
+				return checkCalculation(plan, table, question);
 			case "formula":
-				return checkFormula(plan, table);
+				return checkFormula(plan, table, question);
 			case "summary":
 				return checkSummary(plan, table);
 			case "unsupported":
@@ -465,6 +695,8 @@
 	exports.columnLetter = columnLetter;
 	exports.describeTable = describeTable;
 	exports.buildMessages = buildMessages;
+	exports.buildRepairMessages = buildRepairMessages;
+	exports.answerPlace = answerPlace;
 	exports.checkPlan = checkPlan;
 	exports.summaryCells = summaryCells;
 	exports.canSummarize = canSummarize;
