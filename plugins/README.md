@@ -74,7 +74,7 @@ A local server must allow the document server's origin (Ollama allows
 ### Develop
 
 ```sh
-node --test plugins/personal-office-ai/test/plan.test.js
+node --test plugins/personal-office-ai/test/plan.test.js plugins/personal-office-writer/test/writer.test.js
 docker compose exec -T eo make plugins   # copy into the running dev server
 ```
 
@@ -87,3 +87,40 @@ docker build -t personal-office/documentserver plugins
 ```
 
 Use it in MyStickCloud with `OFFICE_IMAGE=personal-office/documentserver:latest`.
+The server gives its files a new address each time the container starts, so
+recreate the container after installing a new image; browsers then load the new plugins.
+
+
+## Write with Personal Office (`personal-office-writer`)
+
+A panel in the document editor (Plugins tab) with four tabs. It uses the AI
+service chosen under "AI connection" (shared with the spreadsheet panel), and
+the same rule: the AI decides, code does the work and checks it.
+
+- **Writing**: *Check* sends the selected paragraphs (or the one with the
+  cursor) to be proofread, made clearer or more formal. The plugin compares
+  the answer word by word and adds each change as a tracked change, to accept
+  or reject in the Collaboration tab. Rewrites that change a number, or more
+  of the text than the mode allows, are refused. *Continue writing* suggests
+  the next sentence at the cursor and inserts it as a tracked change.
+  *Check structure* adds comments: rule-based ones (heading levels that jump,
+  empty sections, long paragraphs and sentences) and up to five AI notes on
+  the outline.
+- **References**: import the author's library as BibTeX, CSL JSON or RIS
+  (exported from Zotero, Mendeley or EndNote; kept in this browser). *Find
+  sources* shortlists library entries that share words with the selected
+  sentences and lets the AI pick among them only; sources it names that are
+  not in the library are dropped. Ticked suggestions become citation content
+  controls (tag `po-cite:<ids>`); *Cite* inserts one at the cursor. The
+  reference list at the end (content control `po-references`) is rebuilt in
+  APA 7th, Harvard or IEEE whenever citations change; IEEE numbers follow the
+  order of first citation.
+- **Flowchart**: the AI lists the steps of the selected or typed process; the
+  plugin lays them out top to bottom, shows a preview, and inserts them as
+  ordinary grouped shapes with arrows, so every box can be edited. The steps
+  can be edited as Mermaid text and redrawn, and saved as a draw.io file.
+- **Charts**: a "Visual summary" section at the end of the document with up to
+  five charts chosen by the AI from the document's tables. Values are added
+  up by the plugin from the table cells (total rows are left out), each chart
+  has a fact sentence and a link to its source table. *Remove* deletes the
+  section (content control `po-visual-summary`).

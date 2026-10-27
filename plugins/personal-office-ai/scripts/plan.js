@@ -698,6 +698,8 @@
 	exports.buildRepairMessages = buildRepairMessages;
 	exports.answerPlace = answerPlace;
 	exports.checkPlan = checkPlan;
+	exports.checkSummary = checkSummary;
+	exports.parseReply = parseReply;
 	exports.summaryCells = summaryCells;
 	exports.canSummarize = canSummarize;
 	exports.buildVisualMessages = buildVisualMessages;

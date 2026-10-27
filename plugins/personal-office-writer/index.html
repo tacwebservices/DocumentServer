@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+ - SPDX-FileCopyrightText: 2026 Personal Office
+ - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Write with Personal Office</title>
+	<link rel="stylesheet" href="../personal-office-ai/resources/css/style.css">
+	<link rel="stylesheet" href="resources/css/writer.css">
+	<script src="../v1/plugins.js"></script>
+	<script src="../personal-office-ai/scripts/plan.js"></script>
+	<script src="../personal-office-ai/scripts/ai-client.js"></script>
+	<script src="../personal-office-ai/scripts/settings-panel.js"></script>
+	<script src="scripts/writing.js"></script>
+	<script src="scripts/references.js"></script>
+	<script src="scripts/flowchart.js"></script>
+	<script src="scripts/doc-summary.js"></script>
+	<script src="scripts/writer.js"></script>
+</head>
+<body>
+	<div class="tabs" role="tablist">
+		<button role="tab" data-tab="writing" aria-selected="true">Writing</button>
+		<button role="tab" data-tab="references" aria-selected="false">References</button>
+		<button role="tab" data-tab="flowchart" aria-selected="false">Flowchart</button>
+		<button role="tab" data-tab="charts" aria-selected="false">Charts</button>
+	</div>
+
+	<p id="status" class="status" role="status"></p>
+
+	<section id="tab-writing" role="tabpanel">
+		<label for="mode">Check the selected text</label>
+		<select id="mode" class="form-control"></select>
+		<div class="actions">
+			<button id="check" class="btn-text-default primary action">Check</button>
+		</div>
+		<p class="caption">Changes are suggested as tracked changes, never made silently. Accept or reject them in the Collaboration tab.</p>
+		<div class="actions">
+			<button id="continue" class="btn-text-default action" title="Suggest the next sentence at the cursor">Continue writing</button>
+			<button id="structure" class="btn-text-default action" title="Comments on headings, long paragraphs and the outline">Check structure</button>
+		</div>
+		<div id="suggestion" class="card" hidden>
+			<p id="suggestion-text"></p>
+			<div class="actions">
+				<button id="suggestion-insert" class="btn-text-default primary action">Insert</button>
+				<button id="suggestion-again" class="btn-text-default action">Try again</button>
+				<button id="suggestion-dismiss" class="btn-text-default">Dismiss</button>
+			</div>
+		</div>
+		<ul id="writing-results" class="notes"></ul>
+	</section>
+
+	<section id="tab-references" role="tabpanel" hidden>
+		<p id="library-info" class="caption"></p>
+		<div class="actions">
+			<label class="file-button btn-text-default">Import library…<input id="library-file" type="file" accept=".bib,.bibtex,.json,.ris,.txt" hidden></label>
+			<button id="library-clear" class="btn-text-default" hidden>Clear</button>
+		</div>
+		<label for="style">Citation style</label>
+		<select id="style" class="form-control"></select>
+		<div class="actions">
+			<button id="find-sources" class="btn-text-default primary action" title="Suggest citations from your library for the selected sentences">Find sources for selected text</button>
+		</div>
+		<ol id="proposals" class="notes"></ol>
+		<div class="actions">
+			<button id="insert-citations" class="btn-text-default primary action" hidden>Insert ticked citations</button>
+		</div>
+		<label for="library-search">Cite at the cursor</label>
+		<input id="library-search" class="form-control" type="search" placeholder="Search by author, title or year">
+		<ul id="library-results" class="notes library"></ul>
+		<div class="actions">
+			<button id="update-references" class="btn-text-default action" title="Renumber citations and rewrite the reference list at the end">Update reference list</button>
+		</div>
+	</section>
+
+	<section id="tab-flowchart" role="tabpanel" hidden>
+		<label for="process">Describe the process</label>
+		<textarea id="process" class="form-control" rows="4" placeholder="Or leave this empty and select the text in the document that describes it"></textarea>
+		<div class="actions">
+			<button id="draw" class="btn-text-default primary action">Draw flowchart</button>
+		</div>
+		<div id="flow-result" hidden>
+			<div id="flow-preview" class="preview"></div>
+			<label for="flow-title">Title</label>
+			<input id="flow-title" class="form-control" type="text">
+			<div class="actions">
+				<button id="flow-insert" class="btn-text-default primary action">Insert into document</button>
+				<button id="flow-drawio" class="btn-text-default">Download for draw.io</button>
+			</div>
+			<details>
+				<summary>Edit the steps</summary>
+				<textarea id="flow-source" class="form-control code" rows="9" spellcheck="false"></textarea>
+				<button id="flow-redraw" class="btn-text-default">Redraw</button>
+			</details>
+		</div>
+	</section>
+
+	<section id="tab-charts" role="tabpanel" hidden>
+		<p class="caption">A "Visual summary" section with the charts that tell the story of the tables in this document. Every number is calculated from the tables; nothing is estimated.</p>
+		<div class="actions">
+			<button id="visual" class="btn-text-default primary action">Make visual summary</button>
+			<button id="visual-remove" class="btn-text-default action" hidden>Remove</button>
+		</div>
+		<ol id="visual-charts" class="notes"></ol>
+	</section>
+
+	<details id="settings">
+		<summary>AI connection</summary>
+		<label class="caption" for="setting-service">AI service</label>
+		<select id="setting-service" class="form-control"></select>
+		<p id="setting-cloud-note" class="caption" hidden>The text you work on is sent to this service. Your access key is kept in this browser only.</p>
+		<label class="caption" for="setting-url">Server address</label>
+		<input id="setting-url" class="form-control" type="url">
+		<label class="caption" for="setting-model">Model</label>
+		<input id="setting-model" class="form-control" type="text">
+		<label class="caption" for="setting-key">Access key (if the server needs one)</label>
+		<input id="setting-key" class="form-control" type="password">
+		<button id="save-settings" class="btn-text-default">Save</button>
+	</details>
+</body>
+</html>

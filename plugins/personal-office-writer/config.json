@@ -1,0 +1,19 @@
+{
+	"name": "Write with Personal Office",
+	"guid": "asc.{6E1C9A52-3B7D-4F08-9C2E-5A41D7B0E913}",
+	"version": "0.1.0",
+	"variations": [
+		{
+			"description": "Writing help, references from your own library, flowcharts and a visual summary of your tables. Changes are suggested as tracked changes; numbers and citations never come from the AI.",
+			"url": "index.html",
+			"icons": ["resources/img/icon.png", "resources/img/icon@2x.png"],
+			"isViewer": false,
+			"EditorsSupport": ["word"],
+			"isVisual": true,
+			"type": "panelRight",
+			"initDataType": "none",
+			"initData": "",
+			"buttons": []
+		}
+	]
+}

@@ -1,0 +1,107 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Personal Office
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * Additions to ../personal-office-ai/resources/css/style.css for the document panel.
+ */
+body {
+	overflow-x: hidden;
+}
+
+.tabs {
+	display: flex;
+	flex-wrap: wrap;
+	border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.tabs button {
+	flex: 1 1 auto;
+	margin: 0;
+	padding: 6px 3px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	background: none;
+	color: inherit;
+}
+
+.tabs button[aria-selected="true"] {
+	border-bottom-color: #1e5eff;
+	font-weight: bold;
+}
+
+.notes {
+	margin: 8px 0 0;
+	padding-left: 18px;
+	font-family: inherit;
+	word-break: normal;
+}
+
+.notes li {
+	margin-bottom: 6px;
+}
+
+.notes.library {
+	padding-left: 0;
+	list-style: none;
+}
+
+.muted {
+	opacity: 0.7;
+}
+
+.card {
+	margin-top: 8px;
+	padding: 8px;
+	border: 1px solid rgba(128, 128, 128, 0.3);
+	border-radius: 2px;
+}
+
+.card p {
+	margin: 0;
+}
+
+.proposal {
+	display: inline;
+	margin: 0;
+	cursor: pointer;
+}
+
+button.small {
+	margin: 0 4px 0 0;
+	padding: 1px 8px;
+}
+
+.file-button {
+	display: inline-block;
+	margin: 8px 6px 0 0;
+	padding: 4px 14px;
+	border: 1px solid;
+	border-radius: 2px;
+	cursor: pointer;
+}
+
+.preview {
+	margin-top: 8px;
+	padding: 6px;
+	border: 1px solid rgba(128, 128, 128, 0.3);
+	border-radius: 2px;
+	background: #fff;
+}
+
+.preview svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+textarea.code {
+	font-family: Consolas, monospace;
+	white-space: pre;
+}
+
+.proposal input {
+	width: auto;
+	margin: 0 4px 0 0;
+	vertical-align: middle;
+}

@@ -57,6 +57,13 @@ button.primary {
 	color: #fff !important;
 }
 
+/* The editor's theme blanks disabled buttons; keep the label readable */
+button.btn-text-default.primary:disabled {
+	border-color: #1e5eff !important;
+	background-color: #1e5eff !important;
+	color: #fff !important;
+}
+
 button:disabled {
 	opacity: 0.6;
 	cursor: default;
