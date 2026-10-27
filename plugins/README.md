@@ -43,12 +43,18 @@ or more are flagged in red. A sheet without numbers gets no summary.
 
 ### AI server
 
-Any OpenAI-compatible chat endpoint works: Ollama on the laptop
-(`http://localhost:11434/v1` with `qwen2.5:7b`, the default) or llama.cpp / vLLM on an AI Box.
-Change the address, model and access key under "AI connection" in the panel.
-The browser calls the server directly, so it must allow the document server's
-origin (Ollama allows `localhost` and `127.0.0.1` by default; set
-`OLLAMA_ORIGINS` for other hosts).
+Choose the AI service under "AI connection" in the panel:
+
+- **This computer (Ollama)**, the default: `http://localhost:11434/v1` with `qwen2.5:7b`.
+- **ChatGPT (OpenAI)**: `gpt-5-mini`, needs an OpenAI API key.
+- **Claude (Anthropic)**: `claude-opus-5-5`, needs an Anthropic API key.
+- **Other OpenAI-compatible server**, such as llama.cpp or vLLM on an AI Box.
+
+With ChatGPT or Claude the sheet's table leaves the computer, and the panel says so.
+The browser calls the service directly and keeps the access key in its local
+storage, so anyone using the same browser profile uses the same key.
+A local server must allow the document server's origin (Ollama allows
+`localhost` and `127.0.0.1` by default; set `OLLAMA_ORIGINS` for other hosts).
 
 ### Develop
 

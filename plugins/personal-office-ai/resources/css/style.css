@@ -19,6 +19,10 @@ body {
 	font: 12px/1.4 "Segoe UI", Arial, sans-serif;
 }
 
+[hidden] {
+	display: none !important;
+}
+
 label, .caption {
 	display: block;
 	margin: 8px 0 4px;
@@ -28,7 +32,7 @@ label, .caption {
 	opacity: 0.75;
 }
 
-textarea, input {
+textarea, input, select {
 	box-sizing: border-box;
 	width: 100%;
 	padding: 4px 6px;

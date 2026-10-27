@@ -381,8 +381,28 @@
 		});
 	}
 
+	function showCloudNote() {
+		var service = $("setting-service").value;
+		$("setting-cloud-note").hidden = service !== "openai" && service !== "claude";
+	}
+
+	function changeService() {
+		var service = client.SERVICES[$("setting-service").value];
+		$("setting-url").value = service.url;
+		$("setting-model").value = service.model;
+		showCloudNote();
+	}
+
 	function showSettings() {
 		var s = client.loadSettings();
+		var select = $("setting-service");
+		if (!select.options.length) {
+			Object.keys(client.SERVICES).forEach(function (key) {
+				select.add(new Option(client.SERVICES[key].name, key));
+			});
+		}
+		select.value = s.service;
+		showCloudNote();
 		$("setting-url").value = s.url;
 		$("setting-model").value = s.model;
 		$("setting-key").value = s.apiKey;
@@ -390,6 +410,7 @@
 
 	function saveSettings() {
 		client.saveSettings({
+			service: $("setting-service").value,
 			url: $("setting-url").value.trim(),
 			model: $("setting-model").value.trim(),
 			apiKey: $("setting-key").value.trim()
@@ -412,6 +433,7 @@
 			setStatus("");
 		};
 		$("settings").ontoggle = showSettings;
+		$("setting-service").onchange = changeService;
 		$("save-settings").onclick = saveSettings;
 		$("question").focus();
 	};
