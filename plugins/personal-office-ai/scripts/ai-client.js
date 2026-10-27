@@ -14,6 +14,8 @@
 		model: "qwen2.5:7b",
 		apiKey: ""
 	};
+	// A laptop without a graphics card can need minutes for a long answer
+	var TIMEOUT_MS = 5 * 60 * 1000;
 
 	function loadSettings() {
 		var saved = {};
@@ -37,9 +39,14 @@
 		var headers = { "Content-Type": "application/json" };
 		if (settings.apiKey)
 			headers.Authorization = "Bearer " + settings.apiKey;
+		var controller = new AbortController();
+		var timer = setTimeout(function () {
+			controller.abort();
+		}, TIMEOUT_MS);
 		return fetch(settings.url.replace(/\/+$/, "") + "/chat/completions", {
 			method: "POST",
 			headers: headers,
+			signal: controller.signal,
 			body: JSON.stringify({
 				model: settings.model,
 				messages: messages,
@@ -60,9 +67,13 @@
 				throw new Error("The AI service returned an empty answer.");
 			return choice.message.content;
 		}, function (error) {
+			if (error.name === "AbortError")
+				throw new Error("The AI service took more than " + TIMEOUT_MS / 60000 + " minutes. Close other programs to free memory, or use a faster AI server.");
 			if (error instanceof TypeError)
 				throw new Error("Cannot reach the AI service at " + settings.url + ". Check that it is running.");
 			throw error;
+		}).finally(function () {
+			clearTimeout(timer);
 		});
 	}
 

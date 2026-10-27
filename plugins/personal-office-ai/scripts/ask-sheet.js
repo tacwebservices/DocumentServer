@@ -226,8 +226,16 @@
 				throw new Error("This sheet has no table to work with. Put column names in the first row and data below.");
 			var table = plan.describeTable(sheet);
 			var request = makeRequest(table, sheet);
-			setStatus("Thinking…");
-			return client.chat(client.loadSettings(), request.messages).then(function (reply) {
+			var started = Date.now();
+			var showTime = function () {
+				var seconds = Math.round((Date.now() - started) / 1000);
+				setStatus(seconds < 20 ? "Thinking…" : "Thinking… " + seconds + " s (on a laptop this can take a minute or two)");
+			};
+			showTime();
+			var ticker = setInterval(showTime, 1000);
+			return client.chat(client.loadSettings(), request.messages).finally(function () {
+				clearInterval(ticker);
+			}).then(function (reply) {
 				var checked = request.check(reply, table);
 				if (!checked.ok)
 					throw new Error(checked.error);
