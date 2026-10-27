@@ -304,7 +304,8 @@
 				});
 			});
 		}).catch(function (error) {
-			setStatus(error.message, "error");
+			if (!window.PersonalOfficeAI.settingsPanel.offerModelDownload(error, setStatus))
+				setStatus(error.message, "error");
 		}).then(function () {
 			setBusy(false);
 		});

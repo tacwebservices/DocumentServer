@@ -10,7 +10,7 @@
 
 	var STORAGE_KEY = "personal-office-ai.settings";
 	var SERVICES = {
-		local: { name: "This computer (Ollama)", url: "http://localhost:11434/v1", model: "qwen2.5:7b" },
+		local: { name: "This computer (Ollama)", url: "http://localhost:11434/v1", model: "gpt-oss:20b" },
 		openai: { name: "ChatGPT (OpenAI)", url: "https://api.openai.com/v1", model: "gpt-5-mini" },
 		claude: { name: "Claude (Anthropic)", url: "https://api.anthropic.com/v1", model: "claude-opus-5-5" },
 		other: { name: "Other OpenAI-compatible server", url: "", model: "" }
@@ -18,7 +18,9 @@
 	// Claude models that can retry a declined request on another model
 	var CLAUDE_FALLBACK_MODELS = /^claude-(fable-5-1|opus-5-5|opus-5|sonnet-5-5)$/;
 	// A laptop without a graphics card can need minutes for a long answer
-	var TIMEOUT_MS = 5 * 60 * 1000;
+	var TIMEOUT_MS = 10 * 60 * 1000;
+	// Local models that reason before answering; low effort keeps answers quick
+	var REASONING_MODELS = /^gpt-oss/;
 
 	function loadSettings() {
 		var saved = {};
@@ -53,6 +55,8 @@
 		// Current OpenAI models only accept their default temperature
 		if (settings.service !== "openai")
 			body.temperature = 0;
+		if (settings.service !== "openai" && REASONING_MODELS.test(settings.model))
+			body.reasoning_effort = "low";
 		return {
 			url: settings.url.replace(/\/+$/, "") + "/chat/completions",
 			headers: headers,
@@ -124,8 +128,14 @@
 			return response.json().catch(function () {
 				return {};
 			}).then(function (data) {
+				var message = (data.error && (data.error.message || data.error)) || response.status + " " + response.statusText;
+				if (response.status === 404 && settings.service === "local" && (/model .*not found/i).test(message)) {
+					var missing = new Error("The AI model " + settings.model + " is not on this computer yet.");
+					missing.code = "model-missing";
+					throw missing;
+				}
 				if (!response.ok)
-					throw new Error("The AI service answered: " + ((data.error && data.error.message) || response.status + " " + response.statusText));
+					throw new Error("The AI service answered: " + message);
 				return data;
 			});
 		}).then(function (data) {
@@ -137,14 +147,54 @@
 			if (error.name === "AbortError")
 				throw new Error("The AI service took more than " + TIMEOUT_MS / 60000 + " minutes. Close other programs to free memory, or use a faster AI server.");
 			if (error instanceof TypeError)
-				throw new Error("Cannot reach the AI service at " + settings.url + ". Check that it is running.");
+				throw new Error(settings.service === "local" ?
+					"Cannot reach Ollama, the AI engine on this computer. Start \"Ollama\" from the Start menu, then try again." :
+					"Cannot reach the AI service at " + settings.url + ". Check that it is running.");
 			throw error;
 		}).finally(function () {
 			clearTimeout(timer);
 		});
 	}
 
+	// Downloads a model into Ollama. onProgress(completedBytes, totalBytes, status)
+	// is called as the download goes; resolves when the model is ready.
+	function pullModel(settings, onProgress) {
+		var base = settings.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+		return fetch(base + "/api/pull", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ model: settings.model, stream: true })
+		}).then(function (response) {
+			if (!response.ok || !response.body)
+				throw new Error("Ollama could not start the download (" + response.status + ").");
+			var reader = response.body.getReader(), decoder = new TextDecoder(), pending = "", failure = null;
+			var read = function () {
+				return reader.read().then(function (chunk) {
+					pending += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+					var lines = pending.split("\n");
+					pending = chunk.done ? "" : lines.pop();
+					lines.forEach(function (line) {
+						if (!line.trim())
+							return;
+						var update = JSON.parse(line);
+						if (update.error)
+							failure = update.error;
+						else
+							onProgress(update.completed || 0, update.total || 0, update.status || "");
+					});
+					if (failure)
+						throw new Error("The download stopped: " + failure);
+					return chunk.done ? true : read();
+				});
+			};
+			return read();
+		}, function () {
+			throw new Error("Cannot reach Ollama, the AI engine on this computer. Start \"Ollama\" from the Start menu, then try again.");
+		});
+	}
+
 	exports.SERVICES = SERVICES;
+	exports.pullModel = pullModel;
 	exports.loadSettings = loadSettings;
 	exports.saveSettings = saveSettings;
 	exports.chat = chat;

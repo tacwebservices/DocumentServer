@@ -60,7 +60,10 @@ or more are flagged in red. A sheet without numbers gets no summary.
 
 Choose the AI service under "AI connection" in the panel:
 
-- **This computer (Ollama)**, the default: `http://localhost:11434/v1` with `qwen2.5:7b`.
+- **This computer (Ollama)**, the default: `http://localhost:11434/v1` with `gpt-oss:20b`,
+  OpenAI's open model (about 13 GB, 16 GB of memory or more). If the model is not
+  installed yet, the panel offers a *Download AI model* button; it is never
+  downloaded without asking. Smaller models such as `qwen2.5:7b` can be set under Model.
 - **ChatGPT (OpenAI)**: `gpt-5-mini`, needs an OpenAI API key.
 - **Claude (Anthropic)**: `claude-opus-5-5`, needs an Anthropic API key.
 - **Other OpenAI-compatible server**, such as llama.cpp or vLLM on an AI Box.
@@ -69,7 +72,8 @@ With ChatGPT or Claude the sheet's table leaves the computer, and the panel says
 The browser calls the service directly and keeps the access key in its local
 storage, so anyone using the same browser profile uses the same key.
 A local server must allow the document server's origin (Ollama allows
-`localhost` and `127.0.0.1` by default; set `OLLAMA_ORIGINS` for other hosts).
+`localhost`, `127.0.0.1` and the desktop editors' `file://` pages by default; set
+`OLLAMA_ORIGINS` for other hosts).
 
 ### Develop
 
@@ -77,6 +81,21 @@ A local server must allow the document server's origin (Ollama allows
 node --test plugins/personal-office-ai/test/plan.test.js plugins/personal-office-writer/test/writer.test.js
 docker compose exec -T eo make plugins   # copy into the running dev server
 ```
+
+### Desktop editors
+
+The desktop editors find plugins by GUID, so `install.py` copies each plugin into
+a folder named after its GUID and rewrites the links between them:
+
+```sh
+python plugins/install.py <DesktopEditors>/editors/sdkjs-plugins
+```
+
+The desktop build (`build_tools/scripts/deploy_desktop.py`) runs it when this
+checkout sits next to `build_tools`. The Windows installer offers to install
+Ollama (`desktop-apps/package`), so the assistant works without a server; the
+model itself downloads once, from the panel. Editor commands use the public
+builder API only, because the desktop editors are minified.
 
 ### Quick image
 

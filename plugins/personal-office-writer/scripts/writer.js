@@ -63,7 +63,8 @@
 			if (message)
 				setStatus(message, "ok");
 		}, function (error) {
-			setStatus(error.message, "error");
+			if (!AI.settingsPanel.offerModelDownload(error, setStatus))
+				setStatus(error.message, "error");
 		}).then(function () {
 			setBusy(false);
 		});
@@ -97,25 +98,41 @@
 	}
 
 	/* The functions passed to callCommand run inside the editor, not here,
-	 * so they can only use Api, Asc.scope and globals such as AscFormat.
-	 * Api.GetDocument().Document is the editor's own document, for the cursor. */
+	 * so they can only use Api and Asc.scope. They use the public builder API
+	 * only: the desktop editors are minified, so the editor's own objects have
+	 * other names there. Each function is sent on its own, so helpers are
+	 * defined inside the functions that need them.
+	 *
+	 * The paragraph with the cursor is found by selecting the character before
+	 * the cursor, reading the selection and moving the cursor back. */
 
 	// The selected paragraphs, or the one with the cursor. tracked is true when
 	// the paragraph already has tracked changes.
 	function readSelectedParagraphs() {
 		var doc = Api.GetDocument();
+		var cursorParagraph = function () {
+			var paragraphs = [];
+			if (doc.MoveCursorLeft(1, true) && doc.GetRangeBySelect()) {
+				paragraphs = doc.GetRangeBySelect().GetAllParagraphs();
+				doc.MoveCursorRight(1, false);
+				return paragraphs[paragraphs.length - 1] || null;
+			}
+			// At the very start of the document: the character after the cursor
+			if (doc.MoveCursorRight(1, true) && doc.GetRangeBySelect()) {
+				paragraphs = doc.GetRangeBySelect().GetAllParagraphs();
+				doc.MoveCursorLeft(1, false);
+			}
+			return paragraphs[0] || null;
+		};
 		var range = doc.GetRangeBySelect();
 		var paragraphs = range ? range.GetAllParagraphs() : [];
 		if (!paragraphs.length) {
-			var current = Api.GetDocument().Document.GetCurrentParagraph();
-			var p = current && Api.GetByInternalId(current.GetId());
+			var p = cursorParagraph();
 			if (p)
 				paragraphs = [p];
 		}
 		return paragraphs.map(function (p) {
-			var tracked = p.Paragraph.Content.some(function (item) {
-				return item.GetReviewType && item.GetReviewType() !== 0;
-			});
+			var tracked = (/"reviewType":"(add|remove)"/).test(p.ToJSON(false, false));
 			return { id: p.GetInternalId(), text: p.GetText().replace(/[\r\n]+$/, ""), tracked: tracked };
 		}).filter(function (p) {
 			return p.text.trim();
@@ -160,11 +177,14 @@
 			var element = doc.GetElement(i);
 			if (element.GetClassType() !== "paragraph")
 				continue;
-			var level = element.Paragraph.GetOutlineLvl();
+			// Headings by their style ("Heading 2"), or by an outline level set on the paragraph
+			var style = element.GetStyle();
+			var heading = style && (/^heading\s*([1-9])$/i).exec(style.GetName());
+			var outline = element.GetParaPr().GetOutlineLvl();
 			paragraphs.push({
 				id: element.GetInternalId(),
 				text: element.GetText().replace(/[\r\n]+$/, "").slice(0, 4000),
-				level: typeof level === "number" && level >= 0 ? level + 1 : 0
+				level: heading ? Number(heading[1]) : (typeof outline === "number" && outline >= 1 && outline <= 9 ? outline : 0)
 			});
 		}
 		return paragraphs;
@@ -184,9 +204,14 @@
 	// up to the cursor.
 	function readBeforeCursor() {
 		var doc = Api.GetDocument();
-		var logic = Api.GetDocument().Document;
-		var current = logic.GetCurrentParagraph();
-		var p = current && Api.GetByInternalId(current.GetId());
+		if (doc.GetRangeBySelect())
+			doc.MoveCursorRight(1, false);
+		var p = null;
+		if (doc.MoveCursorLeft(1, true) && doc.GetRangeBySelect()) {
+			var left = doc.GetRangeBySelect().GetAllParagraphs();
+			doc.MoveCursorRight(1, false);
+			p = left[left.length - 1] || null;
+		}
 		if (!p)
 			return { text: "" };
 		var text = p.GetText().replace(/[\r\n]+$/, "");
@@ -204,9 +229,8 @@
 	// Asc.scope.text goes in at the cursor as a tracked insertion.
 	function insertTrackedText() {
 		var doc = Api.GetDocument();
-		var logic = Api.GetDocument().Document;
-		if (logic.IsSelectionUse())
-			logic.MoveCursorRight(false, false);
+		if (doc.GetRangeBySelect())
+			doc.MoveCursorRight(1, false);
 		var wasTracking = doc.IsTrackRevisions();
 		doc.SetTrackRevisions(true);
 		var p = Api.CreateParagraph();
@@ -220,7 +244,6 @@
 	// after the anchor text of paragraph id. Without id, it goes at the cursor.
 	function insertCitations() {
 		var doc = Api.GetDocument();
-		var logic = Api.GetDocument().Document;
 		var inserted = 0;
 		Asc.scope.citations.forEach(function (c) {
 			var space = " ";
@@ -229,11 +252,12 @@
 				var found = p ? p.Search(c.anchor, true) : [];
 				if (found.length !== 1)
 					return;
+				// Selected, then collapsed to its end: the cursor is right after the anchor
 				found[0].Select();
-				logic.MoveCursorRight(false, false);
+				doc.MoveCursorRight(1, false);
 			} else {
-				if (logic.IsSelectionUse())
-					logic.MoveCursorRight(false, false);
+				if (doc.GetRangeBySelect())
+					doc.MoveCursorRight(1, false);
 				if ((/(\s|^)$/).test(doc.GetCurrentSentence("before") || ""))
 					space = "";
 			}
@@ -314,12 +338,19 @@
 	function insertFlowchart() {
 		var s = Asc.scope, doc = Api.GetDocument();
 		var mm = 36000;
-		var logic = Api.GetDocument().Document;
-		var current = logic.GetCurrentParagraph();
-		var anchor = current && Api.GetByInternalId(current.GetId());
+		// After the last selected paragraph, or after the one with the cursor
+		var selected = doc.GetRangeBySelect() ? doc.GetRangeBySelect().GetAllParagraphs() : [];
+		var anchor = selected[selected.length - 1] || null;
+		if (!anchor && doc.MoveCursorLeft(1, true) && doc.GetRangeBySelect()) {
+			var left = doc.GetRangeBySelect().GetAllParagraphs();
+			doc.MoveCursorRight(1, false);
+			anchor = left[left.length - 1] || null;
+		}
 		var holder = Api.CreateParagraph();
-		// Only beside a top-level paragraph: not inside a table, content control or shape
-		if (anchor && !anchor.GetParentTable() && !anchor.GetParentContentControl() && anchor.Paragraph.GetParent() === logic)
+		// Only after a paragraph of the document body, not one in a table, content control or shape
+		var position = anchor && !anchor.GetParentTable() && !anchor.GetParentContentControl() ? anchor.GetPosInParent() : -1;
+		var body = position >= 0 && doc.GetElement(position);
+		if (body && body.GetInternalId && body.GetInternalId() === anchor.GetInternalId())
 			anchor.InsertParagraph(holder, "after", true);
 		else
 			doc.Push(holder);
@@ -348,18 +379,18 @@
 			addText(shape, n.text, 18, [0, 0, 0]);
 			place(shape, n.x, n.y);
 		});
-		var arrows = 0;
+		var head = 2.4; // arrowhead size in mm
 		s.lines.forEach(function (l) {
 			var stroke = Api.CreateStroke(12700, Api.CreateSolidFill(grey));
 			if (l.arrow) {
-				try {
-					var end = new AscFormat.EndArrow();
-					end.setType(AscFormat.LineEndType.Triangle);
-					end.setLen(AscFormat.LineEndSize.Mid);
-					end.setW(AscFormat.LineEndSize.Mid);
-					stroke.Ln.setTailEnd(end);
-					arrows++;
-				} catch (e) {}
+				// The builder API has no line ends, so the arrowhead is a small
+				// triangle (pointing up unless rotated) with its tip on the end point.
+				var dx = l.x2 - l.x1, dy = l.y2 - l.y1;
+				var rotation = Math.abs(dy) >= Math.abs(dx) ? (dy > 0 ? 180 : 0) : (dx > 0 ? 90 : 270);
+				var tip = Api.CreateShape("triangle", Math.round(head * mm), Math.round(head * mm), Api.CreateSolidFill(grey), Api.CreateStroke(0, Api.CreateNoFill()));
+				tip.SetRotation(rotation);
+				place(tip, l.x2 - head / 2 - (rotation === 90 ? head / 2 : rotation === 270 ? -head / 2 : 0),
+					l.y2 - head / 2 - (rotation === 180 ? head / 2 : rotation === 0 ? -head / 2 : 0));
 			}
 			var w = Math.abs(l.x2 - l.x1), h = Math.abs(l.y2 - l.y1);
 			var line = Api.CreateShape("line", Math.max(1, Math.round(w * mm)), Math.max(1, Math.round(h * mm)), Api.CreateNoFill(), stroke);
@@ -380,7 +411,7 @@
 		caption.AddText(s.title).SetItalic(true);
 		caption.SetJc("center");
 		holder.InsertParagraph(caption, "after", true);
-		return { id: holder.GetInternalId(), arrows: arrows };
+		return { id: holder.GetInternalId() };
 	}
 
 	function groupFlowchart() {
